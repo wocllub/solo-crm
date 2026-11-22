@@ -94,7 +94,27 @@ function setStatus(s: SyncStatus) {
 function supabaseFor(): SupabaseClient {
   if (!cfg.supabaseUrl || !cfg.supabaseKey) throw new Error("Supabase 설정이 없습니다");
   // 화면에서 로그인한 토큰을 그대로 쓴다 (토큰이 바뀌면 화면이 다시 알려 줌)
-  return createClient(cfg.supabaseUrl, cfg.supabaseKey, { accessToken: async () => auth?.token ?? null });
+  return createClient(cfg.supabaseUrl, cfg.supabaseKey, { accessToken: freshToken });
+}
+
+// 창이 숨겨져(트레이) 있으면 supabase-js 가 토큰을 스스로 갱신하지 않는다.
+// 만료 2분 전부터는 화면에 갱신을 부탁하고 새 토큰을 기다린다 (최대 15초)
+const tokenExp = (t: string) => {
+  try { return Number(JSON.parse(Buffer.from(t.split(".")[1], "base64url").toString("utf8")).exp) * 1000; } catch { return 0; }
+};
+let refreshing: Promise<void> | null = null;
+async function freshToken(): Promise<string | null> {
+  if (!auth) return null;
+  if (tokenExp(auth.token) - Date.now() > 120_000) return auth.token;
+  refreshing ??= new Promise<void>((resolve) => {
+    const old = auth?.token;
+    const done = () => { clearInterval(t); clearTimeout(to); refreshing = null; resolve(); };
+    const t = setInterval(() => { if (auth?.token !== old) done(); }, 200);
+    const to = setTimeout(done, 15_000);
+    win?.webContents.send("solo:refresh");
+  });
+  await refreshing;
+  return auth?.token ?? null;
 }
 
 async function connect() {

@@ -15,5 +15,10 @@ export const supabase = isSupabaseConfigured ? createClient(url!, anonKey!) : nu
 // 데스크톱 앱: 로그인 토큰이 바뀔 때마다 앱(트레이 동기화)에 알려 준다
 if (desktop && supabase) {
   const d = desktop;
-  supabase.auth.onAuthStateChange((_ev, s) => d.setAuth(s ? { token: s.access_token, uid: s.user.id } : null));
+  const sb = supabase;
+  sb.auth.onAuthStateChange((_ev, s) => d.setAuth(s ? { token: s.access_token, uid: s.user.id } : null));
+  // 트레이에 숨겨진 동안에는 자동 갱신이 멈추므로, 앱이 부탁하면 바로 새 토큰을 받는다
+  d.onRefreshRequest?.(() => {
+    sb.auth.refreshSession().then(({ data }) => { if (data.session) d.setAuth({ token: data.session.access_token, uid: data.session.user.id }); });
+  });
 }

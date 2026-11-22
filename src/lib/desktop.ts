@@ -14,6 +14,7 @@ export interface SoloDesktop {
   getStatus(): Promise<DesktopSyncStatus>;
   syncNow(): Promise<void>;
   onStatus(cb: (s: DesktopSyncStatus) => void): () => void;
+  onRefreshRequest?(cb: () => void): () => void;
 }
 
 export const desktop: SoloDesktop | undefined = (globalThis as { soloDesktop?: SoloDesktop }).soloDesktop;

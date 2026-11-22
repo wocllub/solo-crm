@@ -19,7 +19,11 @@ const machine = () => os.hostname();
 // 등록(없으면) → 설정 적용 → 상태(마지막 접속·폴더 확인) 기록
 export async function syncAgent(sb: SupabaseClient, uid: string): Promise<AgentState> {
   const { data: found, error } = await sb.from("sync_agents").select("*").eq("user_id", uid).eq("machine", machine()).maybeSingle();
-  if (error) throw new Error("동기화 PC 설정을 읽지 못했습니다 (0004_sync_agents.sql 적용 여부 확인): " + error.message);
+  if (error) {
+    // 로그인 만료는 다음 확인 때 다시 로그인하면 풀린다 — 표 설치 안내와 섞지 않는다
+    if (/JWT|token/i.test(error.message)) throw new Error("로그인이 만료되어 다시 로그인합니다: " + error.message);
+    throw new Error("동기화 PC 설정을 읽지 못했습니다 (0004_sync_agents.sql 적용 여부 확인): " + error.message);
+  }
   let row = found as Row | null;
   if (!row) {
     // 처음 켜진 PC: 지금 쓰던 폴더(SALES_DIR 또는 기본값)로 등록 — 이후로는 CRM 화면에서 바꾼다
