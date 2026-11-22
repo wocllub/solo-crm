@@ -1,0 +1,36 @@
+# Solo-CRM Windows 설치 파일 (npm run dist:win → release/)
+appId: ai.hanul.solocrm
+productName: Solo-CRM
+copyright: Copyright © 2026 HANUL AI Inc. (하늘에이아이 주식회사). All rights reserved.
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - dist-electron/**
+  - build/icon.png
+  - build/tray.png
+  - package.json
+  - "!node_modules/**"
+# 화면·동기화 코드는 모두 dist/, dist-electron/ 에 묶여 있으므로 node_modules 는 넣지 않는다
+npmRebuild: false
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  icon: build/icon.ico
+  artifactName: Solo-CRM-Setup-${version}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Solo-CRM
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  license: LICENSE
+linux:
+  target: [AppImage]
+  category: Office
+  icon: build/icon.png

@@ -1,0 +1,47 @@
+{
+  "name": "solo-crm",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Solo-CRM — 영업 폴더 자동 동기화 CRM",
+  "author": "HANUL AI Inc. (하늘에이아이 주식회사)",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "dist-electron/main.mjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "sync:dry-run": "node sync/dry-run.ts",
+    "sync": "node sync/run.ts",
+    "sync:watch": "node sync/run.ts --watch",
+    "sync:stop": "node sync/stop.ts",
+    "sync:pick": "node sync/pick-cli.ts",
+    "typecheck:sync": "tsc -p tsconfig.sync.json",
+    "app:build-main": "node scripts/build-electron.mjs",
+    "app": "npm run build && npm run app:build-main && electron .",
+    "dist:win": "npm run build && npm run app:build-main && electron-builder --win",
+    "icons": "electron scripts/make-icons.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.119.2",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-grid-layout": "^2.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
+    "exceljs": "^4.4.0",
+    "oxlint": "^1.90.0",
+    "supabase": "^3.2.0",
+    "typescript": "~7.0.2",
+    "unpdf": "^2.2.1",
+    "vite": "^8.3.6"
+  }
+}
