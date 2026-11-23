@@ -1,7 +1,7 @@
 {
   "name": "solo-crm",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Solo-CRM — 영업 폴더 자동 동기화 CRM",
   "author": "HANUL AI Inc. (하늘에이아이 주식회사)",
   "license": "UNLICENSED",

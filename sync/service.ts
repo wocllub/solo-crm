@@ -125,6 +125,8 @@ export function createSyncService(host: SyncHost, opts: { watch: boolean }): Syn
   async function handleBrowse(reqAt: string | null, browsePath: string | null) {
     if (!reqAt || reqKey(reqAt) === lastBrowseReq || !conn || !agent) return;
     lastBrowseReq = reqKey(reqAt);
+    // 프로그램을 다시 켰을 때 예전 요청(특히 「탐색기로 선택」)에 다시 답하지 않게: 2분 지난 요청은 무시
+    if (Date.now() - Date.parse(reqAt) > 120_000) return;
     const pick = !!browsePath?.startsWith("pick:");
     if (pick) log("CRM에서 탐색기 「폴더 선택」 창을 요청했습니다");
     try {
@@ -142,11 +144,17 @@ export function createSyncService(host: SyncHost, opts: { watch: boolean }): Syn
       .on("postgres_changes", { event: "UPDATE", schema: "public", table: "sync_agents", filter: `id=eq.${agent.id}` }, (p) => {
         const n = p.new as { browse_req_at: string | null; browse_path: string | null; sales_dir: string | null; since: string | null; enabled: boolean };
         // 폴더 찾아보기 요청은 폴더 목록만 보낸다 — 동기화는 하지 않음
-        if (n.browse_req_at && reqKey(n.browse_req_at) !== lastBrowseReq) { handleBrowse(n.browse_req_at, n.browse_path); return; }
+        // (2분 지난 예전 요청은 새 요청으로 보지 않는다 — 그러지 않으면 켜기·끄기 알림이 여기서 묻힘)
+        const freshBrowse = n.browse_req_at && reqKey(n.browse_req_at) !== lastBrowseReq && Date.now() - Date.parse(n.browse_req_at) < 120_000;
+        if (freshBrowse) { handleBrowse(n.browse_req_at, n.browse_path); return; }
         // 폴더·기준일·켜기/끄기가 실제로 바뀐 경우에만 다시 반영 (이 프로그램이 쓴 접속 시각·폴더 목록 알림은 무시 → 무한 반복 방지)
         if (agent && ((n.sales_dir && n.sales_dir !== agent.root) || (n.since && n.since !== agent.since) || n.enabled !== agent.enabled)) checkSettings();
       })
-      .subscribe();
+      .subscribe((st, err) => {
+        // 실시간이 안 되면 1분 확인으로만 반영되므로 기록해 둔다
+        if (st === "SUBSCRIBED") log("실시간 연결됨 — CRM 설정 변경을 바로 받습니다");
+        else if (st !== "CLOSED") log(`실시간 연결 ${st}${err ? ": " + err.message : ""} — 1분마다 확인합니다`);
+      });
     subscribed = { id: agent.id, ch, sb: conn.sb };
   }
 

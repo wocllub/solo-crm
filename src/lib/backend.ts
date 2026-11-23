@@ -112,6 +112,8 @@ export async function loadSession(): Promise<Session | null> {
 }
 
 export function supabaseBackend(myId: string): Backend {
+  // 동기화 PC 설정을 바꾼 뒤 실시간 알림을 기다리지 않고 바로 다시 읽는다 (실시간이 끊겨 있어도 버튼이 바로 바뀌게)
+  let reloadSync: (() => void) | null = null;
   const sb = supabase!;
   return {
     demo: false,
@@ -145,6 +147,10 @@ export function supabaseBackend(myId: string): Backend {
         if (!run.error) l.lastRun?.(run.data ? runFromRow(run.data as Row) : null);
         if (!ag.error) l.agents?.((ag.data as Row[]).map(agentFromRow));
       };
+      reloadSync = loadSync;
+      // 창이 다시 보이면(트레이에서 열기 등) 그동안 놓친 변경을 한 번 다시 읽는다
+      const onVisible = () => { if (document.visibilityState === "visible") loadAll(); };
+      document.addEventListener("visibilitychange", onVisible);
       // 실시간 반영 (원본의 onSnapshot 대체)
       const ch: RealtimeChannel = sb
         .channel("crm")
@@ -169,7 +175,7 @@ export function supabaseBackend(myId: string): Backend {
           if (status === "SUBSCRIBED") loadAll();
           if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") l.error(new Error(status));
         });
-      return () => { sb.removeChannel(ch); };
+      return () => { sb.removeChannel(ch); document.removeEventListener("visibilitychange", onVisible); reloadSync = null; };
     },
     async addDeal(d) { check((await sb.from("deals").insert(dealToRow(d))).error); },
     async putDeal(id, d) { check((await sb.from("deals").update(dealToRow(d)).eq("id", id)).error); },
@@ -198,8 +204,9 @@ export function supabaseBackend(myId: string): Backend {
       if (p.since !== undefined) row.since = p.since;
       if (p.enabled !== undefined) row.enabled = p.enabled;
       check((await sb.from("sync_agents").update(row).eq("id", id)).error);
+      reloadSync?.();
     },
-    async delAgent(id) { check((await sb.from("sync_agents").delete().eq("id", id)).error); },
+    async delAgent(id) { check((await sb.from("sync_agents").delete().eq("id", id)).error); reloadSync?.(); },
     async browseAgent(id, path) {
       const reqAt = new Date().toISOString();
       check((await sb.from("sync_agents").update({ browse_path: path || null, browse_req_at: reqAt }).eq("id", id)).error);

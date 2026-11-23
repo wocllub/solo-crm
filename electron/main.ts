@@ -120,6 +120,9 @@ async function freshToken(): Promise<string | null> {
 async function connect() {
   if (!auth) throw new Error("로그인되어 있지 않습니다 — CRM 창에서 로그인하세요");
   sb ??= supabaseFor();
+  // 실시간 연결에도 로그인 토큰을 준다 — 없으면 권한(RLS) 때문에 이 PC 설정 변경 알림이 오지 않아 1분 확인에만 의존하게 됨
+  const t = await freshToken();
+  if (t) await sb.realtime.setAuth(t);
   const { data: p } = await sb.from("profiles").select("role").eq("id", auth.uid).maybeSingle();
   if (p?.role !== "sync" && p?.role !== "admin") throw new Error(`이 PC의 자동 동기화는 관리자 계정으로 로그인했을 때 돌아갑니다 (지금 권한: ${p?.role ?? "없음"})`);
   return { sb, uid: auth.uid };
