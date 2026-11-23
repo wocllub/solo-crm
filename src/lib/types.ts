@@ -121,9 +121,14 @@ export interface LedgerRow extends Audit {
   owner: string | null;
 }
 
+// 대시보드에 보일 목표: 마진만 · 매출만 · 둘 다
+export type GoalShow = "margin" | "sales" | "both";
+
 export interface MainSettings {
-  target: number;
+  target: number;        // 연간 마진 목표
   year: number;
+  salesTarget?: number;  // 연간 매출 목표 (없으면 0 — 정하지 않음)
+  show?: GoalShow;       // 없으면 "margin" (예전과 같음)
 }
 
 export type WidgetId = "rate" | "margin" | "left" | "pipe" | "target" | "contrib" | "funnel" | "notes";

@@ -73,7 +73,19 @@ type Tab = "dash" | "pipe" | "ledger" | "sync";
 type SheetState = { kind: "deal"; id: string | null } | { kind: "ledger"; id: string | null; presetDealId: string | null } | null;
 
 function Shell({ onChangePassword, pwDone }: { onChangePassword: () => void; pwDone: boolean }) {
-  const { me, role, canWrite, status, deals, ledger, backend, issues, toast } = useCrm();
+  const { me, role, canWrite, status, deals, ledger, backend, issues, toast, settings, names } = useCrm();
+  // 전체 데이터를 엑셀로
+  const [exporting, setExporting] = useState(false);
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const { exportXlsx } = await import("./lib/exportXlsx");
+      const n = await exportXlsx({ deals, ledger, settings, names });
+      toast(`엑셀 파일을 만들었습니다 — 견적 ${n.deals}건 · 판매원장 ${n.ledger}건 · 분할 청구 ${n.parts}회차`);
+    } catch (e) { toast("엑셀 파일을 만들지 못했습니다: " + (e as Error).message); }
+    setExporting(false);
+  };
+  const goalTitle = settings.show === "sales" ? "매출 목표 현황" : settings.show === "both" ? "마진·매출 목표 현황" : "마진 목표 현황";
   useEffect(() => { if (pwDone) toast("비밀번호를 바꿨습니다"); }, [pwDone, toast]);
   const [tab, setTabState] = useState<Tab>(() => {
     const h = location.hash.slice(1);
@@ -100,13 +112,14 @@ function Shell({ onChangePassword, pwDone }: { onChangePassword: () => void; pwD
         <header>
           <div>
             <div className="sub">Solo-CRM · HANUL AI Inc.</div>
-            <h1>2026 영업 펀넬 · 마진 목표 현황</h1>
+            <h1>{Number(settings.year) || 2026} 영업 펀넬 · {goalTitle}</h1>
           </div>
           <div className="meta">
             <span>기준일 <span className="num">{todayStr()}</span> · 금액 단위: 원 (VAT 별도)</span>
             <span className="me">
               {me.avatarUrl && <img alt="" src={me.avatarUrl} />}
               <span>{me.name}{canWrite ? "" : " · 보기 전용"}{role === "admin" ? " · 관리자" : ""}</span>
+              <button type="button" className="linkbtn out" onClick={doExport} disabled={exporting} title="요약·견적 파이프라인·판매원장·분할 청구를 엑셀 파일 하나로 받습니다">{exporting ? "만드는 중…" : "엑셀로 내보내기"}</button>
               {!backend.demo && <button type="button" className="linkbtn out" onClick={onChangePassword}>비밀번호 변경</button>}
               <button type="button" className="linkbtn out" onClick={() => backend.signOut()}>{backend.demo ? "데모 초기화" : "로그아웃"}</button>
             </span>

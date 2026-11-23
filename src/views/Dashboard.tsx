@@ -3,7 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useCrm } from "../lib/crm";
 import { eok, pct, won } from "../lib/format";
 import { clone, GRID, LAY0, LS_KEY, MIN, WNAME, cleanLay } from "../lib/layout";
-import { STAGE, type Layout, type Stage, type WidgetId } from "../lib/types";
+import { STAGE, type GoalShow, type Layout, type Stage, type WidgetId } from "../lib/types";
 import { AmountInput } from "../components/ui";
 import ReactGridLayout, { useContainerWidth, type Layout as GridLayout } from "react-grid-layout";
 import "react-grid-layout/css/styles.css";
@@ -12,8 +12,15 @@ import "react-resizable/css/styles.css";
 export function Dashboard() {
   const { deals, ledger, settings, canAdmin, canWrite, backend, toast, teamLayout } = useCrm();
   const TARGET = Number(settings.target) || 100000000, Y = Number(settings.year) || 2026;
+  const SALES_TARGET = Number(settings.salesTarget) || 0;
+  const show: GoalShow = settings.show === "sales" || settings.show === "both" ? settings.show : "margin";
   const totSale = ledger.reduce((a, r) => a + r.sale, 0), totMargin = ledger.reduce((a, r) => a + r.margin, 0);
-  const left = Math.max(0, TARGET - totMargin);
+  // 보여 줄 목표 (마진·매출 중 고른 것)
+  const metrics: Metric[] = [
+    ...(show !== "sales" ? [{ key: "margin" as const, name: "마진", target: TARGET, total: totMargin }] : []),
+    ...(show !== "margin" ? [{ key: "sales" as const, name: "매출", target: SALES_TARGET, total: totSale }] : []),
+  ];
+  const multi = metrics.length > 1;
   const now = new Date(), y0 = new Date(Y, 0, 1), y1 = new Date(Y + 1, 0, 1);
   const elapsed = Math.min(1, Math.max(0, (+now - +y0) / (+y1 - +y0)));
   const monthsLeft = Math.max(0.5, (+y1 - +now) / (30.44 * 864e5));
@@ -22,15 +29,21 @@ export function Dashboard() {
   const pipeAmt = pipe.reduce((a, d) => a + d.amt, 0), pipeW = pipe.reduce((a, d) => a + d.w, 0);
   const lostN = deals.filter((d) => d.stage === "lost").length;
 
-  /* ---- 목표 금액 바꾸기 (관리자) ---- */
+  /* ---- 목표 바꾸기 (관리자): 마진 목표 · 매출 목표 · 대시보드에 보일 목표 ---- */
   const [tgtEdit, setTgtEdit] = useState(false);
   const [tgtVal, setTgtVal] = useState(TARGET);
+  const [salesVal, setSalesVal] = useState(SALES_TARGET);
+  const [showVal, setShowVal] = useState<GoalShow>(show);
   const [tgtBusy, setTgtBusy] = useState(false);
+  const openTgt = () => { setTgtVal(TARGET); setSalesVal(SALES_TARGET); setShowVal(show); setTgtEdit(true); };
   const saveTarget = async () => {
-    if (!tgtVal) return;
+    if (showVal !== "sales" && !tgtVal) { toast("마진 목표 금액을 넣으세요"); return; }
+    if (showVal !== "margin" && !salesVal) { toast("매출 목표 금액을 넣으세요"); return; }
     setTgtBusy(true);
-    try { await backend.setSetting("main", { ...settings, target: tgtVal, year: Y }); toast("목표를 바꿨습니다"); setTgtEdit(false); }
-    catch { toast("목표를 저장하지 못했습니다. 관리자 권한이 필요합니다."); }
+    try {
+      await backend.setSetting("main", { ...settings, target: tgtVal || TARGET, salesTarget: salesVal || 0, show: showVal, year: Y });
+      toast("목표를 바꿨습니다"); setTgtEdit(false);
+    } catch { toast("목표를 저장하지 못했습니다. 관리자 권한이 필요합니다."); }
     setTgtBusy(false);
   };
 
@@ -87,40 +100,50 @@ export function Dashboard() {
     );
   };
 
-  const rate = (totMargin / TARGET) * 100;
+  const noTarget = (m: Metric) => !m.target;
 
   const cards: ReactNode[] = [
-        renderW("rate", "kpi main", <><span className="lb">마진 목표 달성률</span><span className="v">{pct(totMargin, TARGET)}</span>
-          <span className="d">목표 {eok(TARGET)} 원 대비 · 연간 경과율 {(elapsed * 100).toFixed(1)}% ({mm}/{dd} 기준)</span></>),
+        renderW("rate", `kpi main${multi ? " multi" : ""}`, <>{metrics.map((m) => (
+          <div key={m.key} className="kpi-part">
+            <span className="lb">{m.name} 목표 달성률</span><span className="v">{noTarget(m) ? "—" : pct(m.total, m.target)}</span>
+            <span className="d">{noTarget(m) ? "목표를 정하지 않았습니다" : `목표 ${eok(m.target)} 원 대비`}{multi ? "" : ` · 연간 경과율 ${(elapsed * 100).toFixed(1)}% (${mm}/${dd} 기준)`}</span>
+          </div>))}
+          {multi && <span className="d">연간 경과율 {(elapsed * 100).toFixed(1)}% ({mm}/{dd} 기준)</span>}</>),
         renderW("margin", "kpi", <><span className="lb">확정 마진 (판매원장)</span><span className="v">{won(totMargin)}</span>
-          <span className="d">판매원장 {ledger.length}건 · 평균 마진율 {pct(totMargin, totSale)}</span></>),
-        renderW("left", "kpi", <><span className="lb">잔여 목표 마진</span><span className="v">{won(left)}</span>
-          <span className="d">{left ? `남은 기간(${mm}/${dd}~12/31) 월평균 필요액 ${won(Math.ceil(left / monthsLeft))}` : "목표를 달성했습니다"}</span></>),
+          <span className="d">판매원장 {ledger.length}건 · 확정 매출 {eok(totSale)}원 · 평균 마진율 {pct(totMargin, totSale)}</span></>),
+        renderW("left", `kpi${multi ? " multi" : ""}`, <>{metrics.map((m) => { const left = Math.max(0, m.target - m.total); return (
+          <div key={m.key} className="kpi-part">
+            <span className="lb">잔여 목표 {m.name}</span><span className="v">{noTarget(m) ? "—" : won(left)}</span>
+            <span className="d">{noTarget(m) ? "목표를 정하지 않았습니다" : left ? `남은 기간(${mm}/${dd}~12/31) 월평균 필요액 ${won(Math.ceil(left / monthsLeft))}` : "목표를 달성했습니다"}</span>
+          </div>); })}</>),
         renderW("pipe", "kpi", <><span className="lb">확도 반영 예상 매출 (진행 중)</span><span className="v">{eok(pipeW)}원</span>
           <span className="d">견적 총액 {eok(pipeAmt)}원 × 확도 · 진행 {pipe.length}건{lostN ? ` · 실주 ${lostN}건 제외` : ""}</span></>),
         renderW("target", "panel", <>
-          <div className="sec-head"><div><h2>연간 마진 목표 {eok(TARGET)} 원 달성률</h2><span className="hint">판매원장 기준 · 계약일 월별 누적</span>
+          <div className="sec-head"><div><h2>{multi ? "연간 마진·매출 목표 달성률" : `연간 ${metrics[0].name} 목표 ${metrics[0].target ? eok(metrics[0].target) + " 원 " : ""}달성률`}</h2>
+            <span className="hint">판매원장 기준 · 계약일 월별 누적</span>
             <div>
-              {canAdmin && canWrite && !tgtEdit && <button type="button" className="linkbtn" onClick={() => { setTgtVal(TARGET); setTgtEdit(true); }}>목표 금액 바꾸기</button>}
+              {canAdmin && canWrite && !tgtEdit && <button type="button" className="linkbtn" onClick={openTgt}>목표 바꾸기</button>}
               {tgtEdit && (
-                <div className="tgt-edit">
-                  <AmountInput aria-label="연간 마진 목표" value={tgtVal} onChange={setTgtVal} autoFocus />
-                  <button type="button" className="btn primary" style={{ padding: "5px 12px" }} disabled={tgtBusy} onClick={saveTarget}>저장</button>
-                  <button type="button" className="btn" style={{ padding: "5px 12px" }} onClick={() => setTgtEdit(false)}>취소</button>
+                <div className="tgt-edit" style={{ display: "grid", gap: 8, maxWidth: 420 }}>
+                  <label className="tgt-row"><span>마진 목표</span><AmountInput aria-label="연간 마진 목표" value={tgtVal} onChange={setTgtVal} autoFocus /></label>
+                  <label className="tgt-row"><span>매출 목표</span><AmountInput aria-label="연간 매출 목표" value={salesVal} onChange={setSalesVal} /></label>
+                  <div className="tgt-row" role="radiogroup" aria-label="대시보드에 보일 목표"><span>보일 목표</span>
+                    <div className="seg">
+                      {([["margin", "마진만"], ["sales", "매출만"], ["both", "둘 다"]] as [GoalShow, string][]).map(([k, t]) => (
+                        <button key={k} type="button" role="radio" aria-checked={showVal === k} className={showVal === k ? "on" : ""} onClick={() => setShowVal(k)}>{t}</button>))}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button type="button" className="btn primary" style={{ padding: "5px 12px" }} disabled={tgtBusy} onClick={saveTarget}>저장</button>
+                    <button type="button" className="btn" style={{ padding: "5px 12px" }} onClick={() => setTgtEdit(false)}>취소</button>
+                  </div>
                 </div>
               )}
             </div>
           </div></div>
-          <div className="bar-track">
-            <div className="bar-fill" style={{ width: `${Math.min(100, rate)}%` }}></div>
-            <div className="bar-tick" style={{ left: `${elapsed * 100}%` }}></div>
-            <div className="bar-mark" style={{ left: `${Math.min(92, Math.max(8, elapsed * 100))}%` }}>{mm}/{dd} 기준선 {eok(TARGET * elapsed)}</div>
-            <div className="bar-val" style={rate > 70 ? { right: `calc(${100 - Math.min(100, rate)}% + 8px)`, color: "var(--on-accent)" } : { left: `calc(${rate}% + 8px)` }}>
-              {pct(totMargin, TARGET)} · {eok(totMargin)}원
-            </div>
+          <div className={multi ? "goal-grid" : undefined}>
+            {metrics.map((m) => <GoalBlock key={m.key} m={m} multi={multi} year={Y} elapsed={elapsed} mm={mm} dd={dd} />)}
           </div>
-          <div className="bar-labels">{[0, 0.25, 0.5, 0.75, 1].map((f) => <span key={f}>{f ? eok(TARGET * f) : "0"}</span>)}</div>
-          <div style={{ marginTop: 22 }}><MonthlyChart target={TARGET} year={Y} /></div>
         </>),
         renderW("contrib", "panel", <><Contrib total={totMargin} /></>),
         renderW("funnel", "panel", <><Funnel /></>),
@@ -130,7 +153,7 @@ export function Dashboard() {
             <li>당사 발행 견적서만 펀넬에 넣습니다. 매입처가 당사에 보낸 견적서는 넣지 않습니다.</li>
             <li>수정견적은 최신 버전 1건만 남기고, 금액·버전·비고를 그 건에서 고칩니다. 대안 견적은 1건으로 묶고 비고에 다른 안의 금액을 적습니다.</li>
             <li>확도 반영 금액 = 견적금액 × 확도. 진행 중(견적제출·수정견적·발주서 접수) 건만 예상 매출에 들어갑니다.</li>
-            <li>판매원장을 작성하면 연결한 견적이 자동으로 「판매원장 작성(100%)」 단계로 바뀌고 마진이 달성률에 반영됩니다.</li>
+            <li>판매원장을 작성하면 연결한 견적이 자동으로 「판매원장 작성(100%)」 단계로 바뀌고 마진(판매가−원가)과 매출(판매가)이 달성률에 반영됩니다. 대시보드에 보일 목표(마진·매출·둘 다)는 관리자가 「목표 바꾸기」에서 정합니다.</li>
             <li>최근 7일 안에 추가된 건에는 NEW 표시가 붙습니다. 모든 변경은 열어 둔 모든 직원 화면에 바로 반영됩니다.</li>
           </ul>
         </>),
@@ -157,7 +180,11 @@ export function Dashboard() {
         {mounted && (narrow ? (
           <div className="dgrid-m">{[...shown].sort((a, b) => (order.get(String(a.key)) ?? 0) - (order.get(String(b.key)) ?? 0))}</div>
         ) : (
-          <ReactGridLayout className="rgl-dash" width={width} layout={visible.map((it) => ({ ...it, minW: MIN[it.i].w, minH: MIN[it.i].h }))}
+          <ReactGridLayout className="rgl-dash" width={width} layout={visible.map((it) => {
+            // 마진·매출을 둘 다 보이면 달성률·잔여 목표 상자에 두 줄이 들어가도록 높이를 늘린다
+            const tall = multi && (it.i === "rate" || it.i === "left");
+            return { ...it, h: tall ? Math.max(it.h, 7) : it.h, minW: MIN[it.i].w, minH: tall ? 7 : MIN[it.i].h };
+          })}
             gridConfig={{ cols: GRID.cols, rowHeight: GRID.rowHeight, margin: GRID.margin, containerPadding: [0, 0] }}
             dragConfig={{ enabled: true, handle: ".w-grip", cancel: ".w-x" }}
             resizeConfig={{ enabled: true, handles: ["se"] }}
@@ -170,11 +197,37 @@ export function Dashboard() {
   );
 }
 
-function MonthlyChart({ target: TARGET, year: Y }: { target: number; year: number }) {
+// 목표 하나(마진 또는 매출)
+interface Metric { key: "margin" | "sales"; name: string; target: number; total: number }
+const valOf = (key: Metric["key"]) => (r: { margin: number; sale: number }) => (key === "sales" ? r.sale : r.margin);
+
+// 목표 하나의 달성 막대 + 월별 누적 차트
+function GoalBlock({ m, multi, year, elapsed, mm, dd }: { m: Metric; multi: boolean; year: number; elapsed: number; mm: number; dd: number }) {
+  if (!m.target) return <div><h3 className="goal-h">{m.name}</h3><p className="note">연간 {m.name} 목표를 정하지 않았습니다. 관리자가 「목표 바꾸기」에서 정할 수 있습니다.</p></div>;
+  const rate = (m.total / m.target) * 100;
+  return (
+    <div>
+      {multi && <h3 className="goal-h">{m.name} 목표 {eok(m.target)} 원</h3>}
+      <div className="bar-track">
+        <div className="bar-fill" style={{ width: `${Math.min(100, rate)}%` }}></div>
+        <div className="bar-tick" style={{ left: `${elapsed * 100}%` }}></div>
+        <div className="bar-mark" style={{ left: `${Math.min(92, Math.max(8, elapsed * 100))}%` }}>{mm}/{dd} 기준선 {eok(m.target * elapsed)}</div>
+        <div className="bar-val" style={rate > 70 ? { right: `calc(${100 - Math.min(100, rate)}% + 8px)`, color: "var(--on-accent)" } : { left: `calc(${rate}% + 8px)` }}>
+          {pct(m.total, m.target)} · {eok(m.total)}원
+        </div>
+      </div>
+      <div className="bar-labels">{[0, 0.25, 0.5, 0.75, 1].map((f) => <span key={f}>{f ? eok(m.target * f) : "0"}</span>)}</div>
+      <div style={{ marginTop: 22 }}><MonthlyChart target={m.target} year={year} metric={m} /></div>
+    </div>
+  );
+}
+
+function MonthlyChart({ target: TARGET, year: Y, metric }: { target: number; year: number; metric: Metric }) {
   const { ledger } = useCrm();
   const now = new Date(), mm = now.getMonth() + 1;
+  const val = valOf(metric.key), nm = metric.name;
   const monthly = Array(12).fill(0) as number[];
-  ledger.forEach((r) => { if (r.date && +r.date.slice(0, 4) === Y) monthly[+r.date.slice(5, 7) - 1] += r.margin; });
+  ledger.forEach((r) => { if (r.date && +r.date.slice(0, 4) === Y) monthly[+r.date.slice(5, 7) - 1] += val(r); });
   const inYear = ledger.filter((r) => r.date && +r.date.slice(0, 4) === Y).map((r) => +r.date.slice(5, 7) - 1);
   const first = ledger.length ? Math.min(...inYear, mm - 1) : 0;
   const lastM = now.getFullYear() === Y ? mm - 1 : now.getFullYear() > Y ? 11 : -1;
@@ -190,13 +243,13 @@ function MonthlyChart({ target: TARGET, year: Y }: { target: number; year: numbe
   const mtxt = months.filter((m) => m <= lastM).map((m) => `${m + 1}월 ${won(monthly[m])}`).join(" · ");
   return (
     <>
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label="월별 누적 마진과 목표">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" role="img" aria-label={`월별 누적 ${nm}과 목표`}>
         {[0, 0.25, 0.5, 0.75, 1].map((f) => { const v = top * f; return (
           <g key={f}><line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="var(--line)" strokeWidth="1" /><text x={L - 8} y={y(v) + 4} textAnchor="end">{v ? eok(v) : "0"}</text></g>); })}
         <line x1={L} x2={W - R} y1={y(TARGET)} y2={y(TARGET)} stroke="var(--target)" strokeWidth="1.5" strokeDasharray="5 4" />
         <text x={W - R} y={y(TARGET) - 6} textAnchor="end" style={{ fill: "var(--target)" }}>목표 {eok(TARGET)}</text>
         {months.map((m, i) => { const v = monthly[m]; if (v <= 0) return null; const h = (ih * v) / top;
-          return <rect key={m} x={x(i) - bw * 0.22} y={T + ih - h} width={bw * 0.44} height={Math.max(h, 1.5)} fill="var(--accent)" opacity=".35"><title>{m + 1}월 마진 {won(v)}원</title></rect>; })}
+          return <rect key={m} x={x(i) - bw * 0.22} y={T + ih - h} width={bw * 0.44} height={Math.max(h, 1.5)} fill="var(--accent)" opacity=".35"><title>{m + 1}월 {nm} {won(v)}원</title></rect>; })}
         {pts.length > 0 && (
           <>
             <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
@@ -213,7 +266,7 @@ function MonthlyChart({ target: TARGET, year: Y }: { target: number; year: numbe
         {months.map((m, i) => <text key={m} x={x(i)} y={H - 10} textAnchor="middle">{m + 1}월</text>)}
       </svg>
       <div className="note" style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 4 }}>
-        <span><b style={{ color: "var(--accent)" }}>━</b> 누적 마진</span><span><b style={{ color: "var(--accent)", opacity: 0.5 }}>■</b> 월 마진</span>
+        <span><b style={{ color: "var(--accent)" }}>━</b> 누적 {nm}</span><span><b style={{ color: "var(--accent)", opacity: 0.5 }}>■</b> 월 {nm}</span>
         <span><b style={{ color: "var(--target)" }}>┅</b> 목표</span><span>{mtxt}</span>
       </div>
     </>

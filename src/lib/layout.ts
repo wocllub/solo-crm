@@ -3,7 +3,7 @@
 import type { GridItem, Layout, WidgetId } from "./types";
 
 export const WNAME: Record<WidgetId, string> = {
-  rate: "마진 목표 달성률", margin: "확정 마진", left: "잔여 목표 마진", pipe: "확도 반영 예상 매출",
+  rate: "목표 달성률", margin: "확정 마진", left: "잔여 목표", pipe: "확도 반영 예상 매출",
   target: "목표 달성률 차트", contrib: "건별 마진 기여", funnel: "영업 펀넬", notes: "집계 기준",
 };
 export const WIDS = Object.keys(WNAME) as WidgetId[];

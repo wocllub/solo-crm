@@ -332,3 +332,18 @@ header .linkbtn.out{color:#8fd9bb;margin-left:6px}
 .rgl-dash .react-grid-item:hover .react-resizable-handle{opacity:.7}
 .dgrid-m{display:grid;gap:12px}
 .dgrid-m .w{grid-column:auto}
+
+/* 목표: 마진·매출 둘 다 보일 때 */
+.kpi.multi{gap:10px}
+.kpi.multi .v{font-size:19px}
+.kpi-part{display:grid;gap:2px}
+.kpi.multi .kpi-part+.kpi-part{padding-top:8px;border-top:1px solid var(--line)}
+.kpi.main.multi .kpi-part+.kpi-part{border-top-color:rgba(255,255,255,.22)}
+.goal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:24px}
+.goal-h{font-size:14px;margin:0 0 30px;font-weight:600}
+.tgt-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px}
+.tgt-row>span{min-width:5.5em;color:var(--muted)}
+.seg{display:inline-flex;border:1px solid var(--line-2);border-radius:8px;overflow:hidden}
+.seg button{font:inherit;font-size:12.5px;padding:5px 12px;border:0;background:var(--surface);color:var(--ink);cursor:pointer}
+.seg button+button{border-left:1px solid var(--line-2)}
+.seg button.on{background:var(--accent);color:var(--on-accent)}
